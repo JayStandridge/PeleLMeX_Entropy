@@ -878,6 +878,13 @@ void PeleLM::derivedSetup()
    }
 
    // UserDefined derived
+
+
+   
+      // EITERM4
+   derive_lst.add("EITERM4",IndexType::TheCellType(),1,pelelm_derEIterm4,the_same_box);
+   
+
    {
        Vector<std::string> var_names = pelelm_setuserderives();
        derive_lst.add("derUserDefined",IndexType::TheCellType(),var_names.size(),var_names,

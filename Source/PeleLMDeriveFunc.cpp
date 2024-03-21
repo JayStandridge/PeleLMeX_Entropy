@@ -2,6 +2,7 @@
 #include "PeleLM.H"
 #include "PeleLM_K.H"
 #include "PeleLMDeriveFunc.H"
+#include "pelelm_prob.H"
 
 #include <PelePhysics.H>
 #include <mechanism.H>
@@ -1087,3 +1088,156 @@ void pelelm_derdmap (PeleLM* /*a_pelelm*/, const Box& bx, FArrayBox& derfab, int
         der(i,j,k) = myrank;
     });
 }
+
+//
+// Compute EITERM4
+//
+void pelelm_derEIterm4 (PeleLM* a_pelelm, const Box& bx, FArrayBox& derfab, int dcomp, int ncomp,
+                            const FArrayBox& statefab, const FArrayBox& reactfab, const FArrayBox& /*pressfab*/,
+                            const Geometry& geomdata,
+                            Real /*time*/, const Vector<BCRec>& /*bcrec*/, int /*level*/)
+
+{
+    AMREX_ASSERT(derfab.box().contains(bx));
+    AMREX_ASSERT(statefab.box().contains(bx));
+    AMREX_ASSERT(derfab.nComp() >= dcomp + ncomp);
+    AMREX_ASSERT(!a_pelelm->m_incompressible);
+
+    FArrayBox EnthFab;
+    EnthFab.resize(bx,NUM_SPECIES,The_Async_Arena());
+
+    auto const dat = statefab.const_array(); 
+    auto const react = reactfab.const_array(0);
+    auto const& Hi    = EnthFab.array();
+    auto       EI = derfab.array(dcomp);
+    amrex::ParallelFor(bx,
+    [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
+    {
+      EI(i,j,k) = 0.0;
+      amrex::Real massfrac[NUM_SPECIES];
+      amrex::Real gibbs_fe[NUM_SPECIES] = {0.0};
+      amrex::Real gibbs_standard[NUM_SPECIES] = {0.0};
+      amrex::Real prod_rate[NUM_SPECIES] = {0.0};
+      
+      amrex::Real rho = dat(i, j, k, DENSITY);
+      amrex::Real rhoInv = 1/rho;
+      // Get rate of production of each species
+      amrex::Real sc[NUM_SPECIES] = {0.0};
+      for (int n = 0; n < NUM_SPECIES; n++) {
+	massfrac[n] = dat(i, j, k, FIRSTSPEC + n) * rhoInv;
+        sc[n] = rho * massfrac[n] *imw(n);
+      }
+      CKYTCR(rho,rho,massfrac, sc); //Need species concentration first
+      
+      // Get chemical potential, or molar gibbs
+      
+      amrex::Real tc[5]={0.0};
+      tc[0]= std::log(dat(i,j,k,TEMP));
+      tc[1]=dat(i,j,k,TEMP);
+      tc[2]=tc[1]*tc[1];
+      tc[3]=tc[2]*tc[1];
+      tc[4]=tc[3]*tc[1];
+      gibbs(gibbs_fe, tc);
+      for (int n = 0; n < NUM_SPECIES; n++) {
+	gibbs_standard[n] = 8.31446 * dat(i,j,k,TEMP) * gibbs_fe[n];
+	gibbs_fe[n] += std::log(std::max(sc[n]*8.31446 * dat(i,j,k,TEMP)/101325,std::numeric_limits<double>::epsilon()));
+	gibbs_fe[n] *= 8.31446 * dat(i,j,k,TEMP);
+	
+      }
+      for (int ii = 0; ii < NUM_SPECIES; ii++) { 
+	sc[ii] *= 1e6; // in SI units for productionRate
+      }
+      productionRate(prod_rate, sc, dat(i,j,k,TEMP));
+      EI(i,j,k) = 0.0;
+      
+      // for (int ii = 0; ii < NUM_SPECIES; ii++) { 
+      // 	EI(i,j,k)+=prod_rate[ii]*gibbs_fe[ii];
+	
+      // }
+      amrex::Real q_f_temp[NUM_REACTIONS] = {0.0};
+      amrex::Real q_r_temp[NUM_REACTIONS] = {0.0};
+      amrex::Real q_f[NUM_REACTIONS] = {0.0};
+      amrex::Real q_r[NUM_REACTIONS] = {0.0};
+      amrex::Real prod_rate_2[NUM_SPECIES] = {0.0};
+      amrex::Real wdot[NUM_REACTIONS] = {0.0};
+      amrex::Real nu_spec = 0.0;
+      int nspec = 0;
+      int& nspecr = nspec;
+      int* temp;
+      int* temp2;
+      CKINU(0, nspecr, temp, temp2);
+      int ki[nspec] = {0};
+      int nu[nspec] = {0};
+      int* kip = ki;
+      int* nup = nu;
+      int rmap[NUM_REACTIONS] = {0};
+      int* rmapp = rmap;
+      GET_RMAP(rmapp);
+      for (int ii = 0; ii < NUM_SPECIES; ii++) { 
+      	sc[ii] *= 1e-6; // in SI units for productionRate
+      }
+      comp_qfqr(q_f_temp, q_r_temp, sc,sc,tc,1.0/tc[1]);
+      
+      for (int n = 0; n < NUM_REACTIONS; n++) { 
+       
+       	q_f[rmap[n]] = q_f_temp[n];
+       	q_r[rmap[n]] = q_r_temp[n];
+
+      }
+      double DG_j[NUM_REACTIONS] = {0.0};
+      double DG_j_s[NUM_REACTIONS] = {0.0};
+      double EI_j[NUM_REACTIONS] = {0.0};
+      bool skip = false;
+      double EImin = 0.0;
+      int EIminInd = 0;
+      for (int n = 0; n < NUM_REACTIONS; n++) {
+	skip = false;
+      	CKINU(n+1, nspecr, kip, nup);
+      	wdot[n] = 1e-6 * (q_f[n] - q_r[n]);
+      	for (int m = 0; m < nspec; m++){
+      	  DG_j[n] += nu[m] * gibbs_fe[ki[m]-1];
+      	  DG_j_s[n] += nu[m] * gibbs_standard[ki[m]-1];
+	  if (sc[ki[m]-1] < 0.0){
+	    skip = true;
+	  }
+      	}
+	
+	EI_j[n] = wdot[n] * DG_j[n];
+	
+	if (!skip){
+	  if (EI_j[n] < EImin){
+	    EImin = EI_j[n];
+	    EIminInd = n;
+	  }
+	  EI(i,j,k) += EI_j[n];
+	}
+      }
+#if DUMPDATA==true
+      const amrex::Real* prob_lo = geomdata.ProbLo();
+      const amrex::Real* prob_hi = geomdata.ProbHi();
+      const amrex::Real* dx      = geomdata.CellSize();
+      
+      auto eos = pele::physics::PhysicsType::eos();
+      amrex::Real x[AMREX_SPACEDIM] = {0.0};
+      AMREX_D_TERM( x[0] = prob_lo[0] + (i+0.5)*dx[0];,
+		    x[1] = prob_lo[1] + (j+0.5)*dx[1];,
+		    x[2] = prob_lo[2] + (k+0.5)*dx[2];);
+      
+      // Open the file in append mode
+      std::ofstream file("data.txt", std::ios::app);
+      
+      // Check if the file is opened successfully
+      if (!file.is_open()) {
+        std::cerr << "Error opening the file!" << std::endl;
+      }
+      
+      // Append the data row to the file
+      file << x[0] << ", " << x[1] << ", " << dat(i,j,k,DENSITY) << ", " << dat(i,j,k,TEMP)<< std::endl;
+      
+      // Close the file
+      file.close();
+
+#endif
+    });
+}
+

@@ -1,0 +1,133 @@
+#---------------------- DOMAIN DEFINITION ------------------------
+geometry.is_periodic = 0 0                  # For each dir, 0: non-perio, 1: periodic
+geometry.coord_sys   = 0                    # 0 => cart, 1 => RZ
+geometry.prob_lo     =  0.0   0.0        # x_lo y_lo (z_lo)
+geometry.prob_hi     =  .6    .15        # x_hi y_hi (z_hi)
+
+#---------------------- BC FLAGS ---------------------------------
+# Interior, Inflow, Outflow, Symmetry,
+# SlipWallAdiab, NoSlipWallAdiab, SlipWallIsotherm, NoSlipWallIsotherm
+peleLM.lo_bc = Inflow  Symmetry      # bc in x_lo y_lo (z_lo)
+peleLM.hi_bc = Outflow NoSlipWallAdiab      # bc in x_hi y_hi (z_hi)
+
+
+peleLM.do_load_balancing = 1                    # [OPT, DEF=0] Activate load balancing
+peleLM.load_balancing_method = sfc              # [OPT, DEF="sfc"] AmrCore dmap load balancing method
+peleLM.load_balancing_cost_estimate = ncell     # [OPT, DEF="ncell"] AmrCore dmap balancing cost
+peleLM.chem_load_balancing_method = knapsack    # [OPT, DEF="knapsack"] Chemistry dmap load balancing method
+peleLM.chem_load_balancing_cost_estimate = chemfunctcall_sum # [OPT, DEF="chemfunctcall_sum"] Chemistry dmap balancing cost
+peleLM.load_balancing_efficiency_threshold = 1.05  # What constitute a better dmap ?
+
+#---------------------- AMR CONTROL ------------------------------
+amr.n_cell          = 256 64	    # Level 0 number of cells in each direction   
+amr.v               = 3                     # AMR verbose
+amr.max_level       = 3                   # maximum level number allowed
+amr.ref_ratio       = 2 2 2 2               # refinement ratio
+amr.regrid_int      = 5                     # how often to regrid
+amr.n_error_buf     = 2 2 2 2               # number of buffer cells in error est
+amr.grid_eff        = 0.7                   # what constitutes an efficient grid
+amr.blocking_factor = 16                   # block factor in grid generation (min box size)
+amr.max_grid_size   = 2048                    # max box size
+
+#---------------------- Problem ----------------------------------
+prob.T_coflow  = 291.0
+prob.P_mean    = 100615.7
+prob.T_pilot   = 1880
+prob.T_jet     = 294.0
+prob.U_coflow  = 1.5
+prob.U_pilot   = 12.0
+prob.U_jet     = 53.0
+prob.R_smooth  = .00
+prob.R_smooth_2= .00001
+prob.R_smooth_3= .00001
+
+#---------------------- PeleLM CONTROL ---------------------------
+peleLM.v = 1                                # PeleLMeX verbose
+peleLM.use_wbar = 1                         # Include Wbar term in species diffusion fluxes
+peleLM.sdc_iterMax = 2                      # Number of SDC iterations
+peleLM.num_init_iter = 0                    # Number of initial iterations
+peleLM.advection_scheme = Godunov_PLM  # [OPT, DEF=Godunov_PLM] Advection scheme: Godunov_PLM, Godunov_PPM or Godunov_BDS
+peleLM.floor_species = 0                    # Enforce species positivity (non-conservative !)        
+peleLM.do_init_proj=0    
+
+#---------------------- Temporal CONTROL -------------------------
+peleLM.do_temporals = 1                     # Turn temporals ON/OFF
+peleLM.temporal_int = 10                    # Frequency of temporals
+peleLM.do_extremas = 1                      # Compute state extremas
+peleLM.do_mass_balance = 1                  # Compute mass balance
+peleLM.do_species_balance = 1               # Compute species balance
+
+#---------------------- Time Stepping CONTROL --------------------
+amr.max_step = 1000000                          # Maximum number of time steps
+amr.stop_time = 0.5                         # final simulation physical time
+amr.cfl = .25                               # CFL number for hyperbolic system
+amr.dt_shrink = 0.001                       # Scale back initial timestep
+amr.dt_change_max = 1.3                     # Maximum dt increase btw successive steps
+amr.min_dt = 1e-30
+
+#---------------------- IO CONTROL -------------------------------
+#amr.restart = chk70000                     # Restart checkpoint file
+#amr.initDataPlt = inp190719
+amr.check_int = 10000                         # Frequency of checkpoint output
+amr.plot_per = .00025
+#amr.plot_int = 1
+amr.plot_per_exact = 1                           # Frequency of pltfile output
+amr.derive_plot_vars = EITERM4 mass_fractions
+
+#---------------------- Derived CONTROLS -------------------------
+peleLM.fuel_name = CH4
+peleLM.mixtureFraction.format = Cantera
+peleLM.mixtureFraction.type   = mass
+peleLM.mixtureFraction.oxidTank = O2:0.233 N2:0.767
+peleLM.mixtureFraction.fuelTank = CH4:1.0
+peleLM.progressVariable.format = Cantera
+peleLM.progressVariable.weights = CO:1.0 CO2:1.0
+peleLM.progressVariable.coldState = CO:0.0 CO2:0.0
+peleLM.progressVariable.hotState = CO:0.000002 CO2:0.0666
+
+#-----------------------DIFFUSION AND LES MODEL CONTROL-----------------------
+peleLM.unity_Le = 0                    # [OPT, DEF=0] Use the unity Lewis number approximation for diffusivities
+peleLM.Prandtl = 0.7                   # [OPT, DEF=0.7] If unity_Le or doing LES, specifies the Prandtl number
+peleLM.les_model = "Smagorinsky"              # [OPT, DEF="None"] Model to compute turbulent viscosity: None, Smagorinsky, WALE, Sigma
+peleLM.les_cs_smag = 0.18              # [OPT, DEF=0.18] If using Smagorinsky LES model, provides model coefficient
+peleLM.les_cm_wale = 0.60              # [OPT, DEF=0.60] If using WALE LES model, provides model coefficient
+peleLM.les_cs_sigma = 1.35             # [OPT, DEF=1.35] If using Sigma LES model, provides model coefficient
+peleLM.les_v = 1                       # [OPT, DEF=0] Verbosity level for LES model
+peleLM.plot_les = 1                    # [OPT, DEF=0] If doing LES, whether to plot the turbulent viscosity
+
+#---------------------- Reactor CONTROL --------------------------
+peleLM.chem_integrator = "ReactorCvode"
+peleLM.use_typ_vals_chem = 1                # Use species/temp typical values in CVODE
+ode.rtol = 1.0e-8                           # Relative tolerance of the chemical solvey
+ode.atol = 1.0e-10                           # Absolute tolerance factor applied on typical values
+ode.clean_init_massfrac = 0                 # Reaction computed as an increment
+cvode.solve_type = denseAJ_direct           # CVODE Linear solve type (for Newton direction) 
+cvode.max_order  = 4                        # CVODE max BDF order. 
+
+#---------------------- EB SETUP ---------------------------------
+
+
+#---------------------- Linear solver CONTROL --------------------
+nodal_proj.verbose = 0                      # Nodal projection verbose
+nodal_proj.rtol = 1e-7
+mac_proj.verbose = 0                       # MAC projection verbose
+mac_proj.rtol = 1e-7
+diffusion.verbose = 0
+
+#---------------------- Refinement CONTROL------------------------
+amr.refinement_indicators = gradT magvel
+amr.gradT.max_level     = 8
+amr.gradT.adjacent_difference_greater = 100 
+amr.gradT.field_name    = temp
+amr.magvel.field_name   = x_velocity
+amr.magvel.max_level    = 8
+amr.magvel.adjacent_difference_greater = 1
+eb2.geom_type= box
+eb2.box_lo = -1 -1
+eb2.box_hi = -.5 -.5
+eb2.box_has_fluid_inside = 0
+
+#---------------------- Debug/HPC CONTROL-------------------------
+#amrex.fpe_trap_invalid = 1
+#amrex.fpe_trap_zero = 1
+#amrex.fpe_trap_overflow = 1

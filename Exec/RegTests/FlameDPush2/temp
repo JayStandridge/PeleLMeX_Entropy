@@ -1,0 +1,13 @@
+MPI initialized with 1 MPI processes
+MPI initialized with thread support level 0
+Initializing SUNDIALS with 1 threads...
+SUNDIALS initialized.
+AMReX (23.07-4-g9fc635426cae-dirty) initialized
+Successfully read inputs file ... 
+
+ ================= Build infos =================
+ PeleLMeX    git hash: a7364cb-dirty
+ AMReX       git hash: 23.07-4-g9fc6354-dirty
+ PelePhysics git hash: v23.03-50-g8fd8071-dirty
+ AMReX-Hydro git hash: f24f4a6
+ ===============================================
